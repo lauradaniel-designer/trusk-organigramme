@@ -5,7 +5,8 @@ import {
   Users, UserPlus, MoreVertical, CornerUpLeft, AlertCircle, Linkedin, Mail, Phone, LayoutGrid, List, Palette, AlertTriangle,
 } from "lucide-react";
 import Papa from "papaparse";
-import { loadState, saveState, onAuth, signIn, signOut } from "./store";
+/* saveState est renommé : le composant a déjà un état local du même nom */
+import { loadState, saveState as persistState, onAuth, signIn, signOut } from "./store";
 
 /* ------------------------------------------------------------------ *
  *  THEME — tout ce qui est modifiable depuis le panneau Thème
@@ -400,7 +401,7 @@ export default function OrgChart() {
       };
       setSaveState("saving");
       try {
-        await saveState(payload);
+        await persistState(payload);
         setPublished(true);
         setSaveState("saved");
         setTimeout(() => setSaveState("idle"), 1600);
