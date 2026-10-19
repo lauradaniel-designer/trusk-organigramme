@@ -35,7 +35,7 @@ const DEFAULT_THEME = {
   font: "poppins",
   emailDomain: "trusk.com",
   updatedAt: "21/08/26",
-  updatedBy: "Sonali",
+  updatedBy: "",
   radius: 14,
   uppercaseRoles: true,
   showPhotos: true,
@@ -356,6 +356,7 @@ export default function OrgChart() {
   const [heights, setHeights] = useState({});
   const [pendingDelete, setPendingDelete] = useState(null);
   const [showIntro, setShowIntro] = useState(true);
+  const [currentUser, setCurrentUser] = useState(null);
   const [selected, setSelected] = useState(null);
   const [panel, setPanel] = useState(null); // 'code' | 'theme' | 'depts' | 'edit' | 'import'
   const [editing, setEditing] = useState(null);
@@ -389,7 +390,10 @@ export default function OrgChart() {
     })();
 
     // la session d'administration est gérée par Supabase, plus par un code
-    return onAuth((session) => setIsAdmin(!!session));
+    return onAuth((session) => {
+      setIsAdmin(!!session);
+      setCurrentUser(session?.user ?? null);
+    });
   }, []);
 
   const persist = useCallback(
@@ -591,6 +595,26 @@ export default function OrgChart() {
 
   /* ---------- mutations (mode admin) ---------- */
 
+  /* Nom affiché à côté de la date : celui du compte connecté. On prend
+     le display_name renseigné dans Supabase, sinon on reconstruit un nom
+     à partir de l'adresse (laura.daniel@… -> Laura Daniel). */
+  const whoami = () => {
+    const u = currentUser;
+    if (!u) return "";
+    const meta = u.user_metadata || {};
+    const given = meta.display_name || meta.full_name || meta.name;
+    if (given) return String(given).trim();
+    const local = (u.email || "").split("@")[0];
+    if (!local) return "";
+    return local
+      .split(/[._-]+/)
+      .filter(Boolean)
+      .map((w) => w[0].toUpperCase() + w.slice(1))
+      .join(" ");
+  };
+
+  const signature = () => ({ updatedAt: stamp(), updatedBy: whoami() || theme.updatedBy });
+
   const stamp = () => {
     const d = new Date();
     const two = (n) => String(n).padStart(2, "0");
@@ -603,7 +627,7 @@ export default function OrgChart() {
       ? people.map((x) => (x.id === p.id ? p : x))
       : [...people, p];
     setPeople(next);
-    const t = { ...theme, updatedAt: stamp() };
+    const t = { ...theme, ...signature() };
     setTheme(t);
     persist({ people: next, theme: t });
     setEditing(null);
@@ -617,7 +641,7 @@ export default function OrgChart() {
       .filter((p) => p.id !== id)
       .map((p) => (p.managerId === id ? { ...p, managerId: target?.managerId ?? null } : p));
     setPeople(next);
-    const t = { ...theme, updatedAt: stamp() };
+    const t = { ...theme, ...signature() };
     setTheme(t);
     persist({ people: next, theme: t });
     setSelected(null);
@@ -1242,6 +1266,50 @@ function Avatar({ person, size = 34, showPhoto, theme, ring = false, dept }) {
       }}
     >
       {initials(person.name)}
+    </div>
+  );
+}
+
+/* Menu contextuel d'une carte, en mode administrateur. Il se ferme au
+   premier clic ailleurs dans la page. */
+function CardMenu({ theme, onEdit, onAddReport, onDelete, onClose }) {
+  useEffect(() => {
+    const h = () => onClose();
+    window.addEventListener("pointerdown", h);
+    return () => window.removeEventListener("pointerdown", h);
+  }, [onClose]);
+
+  return (
+    <div
+      onPointerDown={(e) => e.stopPropagation()}
+      className="absolute z-20 right-1 top-9 w-60 py-1.5 overflow-hidden"
+      style={{
+        background: "#fff",
+        borderRadius: 12,
+        border: `1px solid ${theme.line}`,
+        boxShadow: "0 12px 30px rgba(11,18,32,0.16)",
+      }}
+    >
+      <button
+        onClick={onEdit}
+        className="w-full px-3.5 h-9 flex items-center gap-2.5 text-[13px] whitespace-nowrap hover:bg-black/[0.04]"
+      >
+        <Pencil size={15} className="opacity-55" /> Modifier la fiche
+      </button>
+      <button
+        onClick={onAddReport}
+        className="w-full px-3.5 h-9 flex items-center gap-2.5 text-[13px] whitespace-nowrap hover:bg-black/[0.04]"
+      >
+        <UserPlus size={15} className="opacity-55" /> Ajouter un rattachement
+      </button>
+      <div className="my-1 h-px" style={{ background: theme.line }} />
+      <button
+        onClick={onDelete}
+        className="w-full px-3.5 h-9 flex items-center gap-2.5 text-[13px] whitespace-nowrap hover:bg-black/[0.04]"
+        style={{ color: "#D02F2F" }}
+      >
+        <Trash2 size={15} /> Supprimer
+      </button>
     </div>
   );
 }
@@ -2441,7 +2509,7 @@ function ThemeEditor({ theme, onChange, onSave }) {
         <Field label="Date de mise à jour">
           <input value={theme.updatedAt} onChange={(e) => set("updatedAt", e.target.value)} placeholder="21/08/26" className={inputCls} style={{ borderRadius: theme.radius, borderColor: theme.line }} />
         </Field>
-        <Field label="Mise à jour par">
+        <Field label="Mise à jour par" hint="Renseigné automatiquement avec le compte qui modifie ; cette valeur ne sert que si aucun compte n'est identifié.">
           <input value={theme.updatedBy} onChange={(e) => set("updatedBy", e.target.value)} className={inputCls} style={{ borderRadius: theme.radius, borderColor: theme.line }} />
         </Field>
       </div>
